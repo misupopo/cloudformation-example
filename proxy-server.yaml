@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This CloudFormation template to create proxy server in vpc
+
+# --------------------------------------------- #
+# Parameters
+# --------------------------------------------- #
+Parameters:
+  ProjectName:
+    Type: String
+  StackName:
+    Type: String
+  ImageId:
+    Type: AWS::EC2::Image::Id
+  InstanceType:
+    Type: String
+  KeyPairName:
+    Type: String
+  AllowCidrIp:
+    Type: String
+
+# --------------------------------------------- #
+# Resources
+# --------------------------------------------- #
+Resources:
+  ProxyServerEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  RdpServerEipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ProxyServerEip.AllocationId
+      NetworkInterfaceId: !Ref ProxyServerNetworkInterface
+
+  ProxyServerNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: ${ProjectName}-public-az-a-subnet
+      GroupSet:
+        - !Ref RdpServerSecurityGroup
+
+  ProxyServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          NetworkInterfaceId: !Ref ProxyServerNetworkInterface
+      Tags:
+        - Key: Name
+          Value: !Sub ${StackName}-proxy-server
+
+  # --------------------------------------------- #
+  # Security Group
+  # --------------------------------------------- #
+  RdpServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group
+      SecurityGroupIngress:
+        - CidrIp: !Ref AllowCidrIp
+          IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+      VpcId: !ImportValue
+        Fn::Sub: ${ProjectName}-vpc-id
+
+# --------------------------------------------- #
+# Outputs
+# --------------------------------------------- #
+Outputs:
+  RdpServerEip:
+    Description: Elastic IP for Proxy Server
+    Value: !Ref ProxyServerEip
+    Export:
+      Name: !Sub '${StackName}-proxy-server-eip'
+
