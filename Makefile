@@ -1,18 +1,14 @@
-# todo あとでcommon.jsonのProjectNameの値と共通で管理できるようにしたい（二重管理をやめたい
-stackName := example
 # .envファイルを読み込み
 # bucketNameなどの引数を入力するのが毎回面倒なので.envから参照する
 include .env
 environmentVariables:=$(shell sed -ne 's/ *\#.*$$//; /./ s/=.*$$// p' .env )
 
+# プロジェクト名
+projectName := $(shell jq -r .ProjectName parameters/$(Environment)/common.json)
+stackName ?= $(projectName)
+
 ifeq ($(target), )
 	@echo "you must add argument target"
-	@exit 1
-endif
-
-# スタックを固定するためstackNameはMakefileで定義された物でなければならない
-ifneq ($(stackName), example)
-	@echo "stackName must be defined variable in Makefile"
 	@exit 1
 endif
 
@@ -20,18 +16,16 @@ endif
 # make test target="test"
 test:
 	echo "target is $(target)"
-	echo "stackName is $(stackName)"
+	echo "projectName is $(projectName)"
 	echo "environmentVariables is $(environmentVariables)"
 	echo "Environment is $(Environment)"
 
 ####### deploy #######
 
-# stackNameの引数はMakefile内に定義してあるので不要
-# jq -r 'keys[] as $k | "\($k)=\(.[$k])"' parameters/sqs.json
-# jqを試してみたがMakefileのコマンドと組み合わせてparameterを渡そうとしたが難しいのjsファイル（deploy.js）で実行する
+# projectNameの引数はMakefile内に定義してあるので不要
 # Environmentは与えければdevがdefault
 deploy:
-	cd scripts/cloudformation && node deploy.js -t $(target) -e $(Environment)
+	cd scripts/cloudformation && npx ts-node deploy.ts -t $(target) -e $(Environment) -s $(stackName)
 
 # parameter-overridesが存在する場合はdeploy-with-paramsを実行
 deploy-with-params:
@@ -57,7 +51,7 @@ deploy-without-params:
 # change-set-nameはversion1.0.1などの小数点は入力できない
 update-package:
 	aws cloudformation create-change-set \
-		--stack-name $(stackName)-$(target) \
+		--stack-name $(projectName)-$(target) \
 		--template-body file://$(target).yaml \
 		--change-set-name $(changeSetName) \
 		--capabilities CAPABILITY_IAM
@@ -66,13 +60,13 @@ update-package:
 # 事前に同じchangeSetNameをupdate-packageで行なってからexecute-update-packageを実行することができる
 execute-update-package:
 	aws cloudformation execute-change-set \
-		--stack-name $(stackName)-$(target) \
+		--stack-name $(projectName)-$(target) \
 		--change-set-name $(changeSetName)
 
 # 途中まで入力したchange-setを出力する
 list-change-set:
 	aws cloudformation list-change-sets \
-		--stack-name $(stackName)-$(target)
+		--stack-name $(projectName)-$(target)
 
 ####### validate #######
 
